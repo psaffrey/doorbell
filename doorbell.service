@@ -1,6 +1,9 @@
 [Unit]
 Description=Doorbell listener
 
+StartLimitIntervalSec=500
+StartLimitBurst=5
+
 [Service]
 Type=simple
 User=root
@@ -9,5 +12,8 @@ ExecStart=/usr/bin/doorbell
 Environment=DOORBELL_SINGLE_SOUND=/usr/share/sounds/sound-icons/mixkit-doorbell-tone-2864.wav
 Environment=DOORBELL_DOUBLE_SOUND=/usr/share/sounds/sound-icons/mixkit-doorbell-tone-2864.wav
 
+Restart=on-failure
+RestartSec=5s
+ 
 [Install]
 WantedBy=multi-user.target

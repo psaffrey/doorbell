@@ -3,8 +3,11 @@ module psaffrey/doorbell
 go 1.18
 
 require (
-	github.com/eclipse/paho.mqtt.golang v1.4.1 // indirect
-	github.com/faiface/beep v1.1.0 // indirect
+	github.com/eclipse/paho.mqtt.golang v1.4.1
+	github.com/faiface/beep v1.1.0
+)
+
+require (
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/hajimehoshi/go-mp3 v0.3.0 // indirect
 	github.com/hajimehoshi/oto v0.7.1 // indirect
