@@ -7,10 +7,9 @@ StartLimitBurst=5
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/doorbell
+EnvironmentFile=/etc/.doorbellconf
 
-Environment=DOORBELL_SINGLE_SOUND=/usr/share/sounds/sound-icons/mixkit-doorbell-tone-2864.wav
-Environment=DOORBELL_DOUBLE_SOUND=/usr/share/sounds/sound-icons/mixkit-doorbell-tone-2864.wav
+ExecStart=/usr/bin/doorbell $SLACK_ARG
 
 Restart=on-failure
 RestartSec=5s
