@@ -81,7 +81,7 @@ func make_listener(button chan<- mqtt.Message) mqtt.MessageHandler {
 }
 
 // coordinate receiving messages and then playing the appropriate sound
-func receiver(button <-chan mqtt.Message, finished chan<- bool, doslack bool) {
+func receiver(button <-chan mqtt.Message, finished chan<- bool, slack_url string) {
 	playing := false
 	single_path := os.Getenv(SINGLE_SOUND_ENV_VAR)
 	double_path := os.Getenv(DOUBLE_SOUND_ENV_VAR)
@@ -112,16 +112,16 @@ func receiver(button <-chan mqtt.Message, finished chan<- bool, doslack bool) {
 				if buttonmessage.Action == "single" {
 					playing = true
 					go sp.play(player_channel)
-					if doslack {
+					if slack_url != "" {
 						message := fmt.Sprintf("ding dong! (link quality %d; battery %d)", buttonmessage.Linkquality, buttonmessage.Battery)
-						go slack_post(message)
+						go slack_post(message, slack_url)
 					}
 				} else if buttonmessage.Action == "double" {
 					playing = true
 					go dp.play(player_channel)
-					if doslack {
+					if slack_url != ""{
 						message := fmt.Sprintf("ding dong! (link quality %d; battery %d)", buttonmessage.Linkquality, buttonmessage.Battery)
-						go slack_post(message)
+						go slack_post(message, slack_url)
 					}
 				}
 			} else {
@@ -173,13 +173,12 @@ func setup_client(listener mqtt.MessageHandler) mqtt.Client {
 }
 
 // post a message to a Slack channel using a webhook
-func slack_post(message string) {
-	endpoint := "https://hooks.slack.com/services/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"
+func slack_post(message string, endpoint string) {
 	postBody, _ := json.Marshal(map[string]string{
 		"text": message,
 	})
-	responseBody := bytes.NewBuffer(postBody)
-	resp, err := http.Post(endpoint, "application/json", responseBody)
+	messageBody := bytes.NewBuffer(postBody)
+	resp, err := http.Post(endpoint, "application/json", messageBody)
 	if err != nil {
 		log.Fatalf("An Error Occured %v", err)
 	}
@@ -210,7 +209,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	slackPtr := flag.Bool("doslack", false, "send slack messages")
+	slackPtr := flag.String("doslack", "", "webhook for Slack messages")
 	flag.Parse()
 
 	button := make(chan mqtt.Message)
