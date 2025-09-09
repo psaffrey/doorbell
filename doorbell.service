@@ -1,18 +1,23 @@
 [Unit]
 Description=Doorbell listener
+After=network.target bluetooth.service alsa-restore.service
+Requires=bluetooth.service alsa-restore.service
 
 StartLimitIntervalSec=500
 StartLimitBurst=5
 
 [Service]
 Type=simple
-User=root
-EnvironmentFile=/etc/.doorbellconf
-
+User=doorbell
+EnvironmentFile=/etc/doorbell.conf
 ExecStart=/usr/bin/doorbell $SLACK_ARG
-
 Restart=on-failure
-RestartSec=5s
- 
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+WorkingDirectory=/var/lib/doorbell
+TimeoutStartSec=30
+TimeoutStopSec=10
+
 [Install]
 WantedBy=multi-user.target
