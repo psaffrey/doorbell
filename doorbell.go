@@ -12,14 +12,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"bytes"
-	"log"
-	"net/http"
-	_ "net/http/pprof"
-	"os"
-	"path/filepath"
-	"time"
-
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/flac"
@@ -31,6 +23,7 @@ import (
 var SINGLE_SOUND_ENV_VAR = "DOORBELL_SINGLE_SOUND"
 var DOUBLE_SOUND_ENV_VAR = "DOORBELL_DOUBLE_SOUND"
 var BROKER_ENV_VAR = "DOORBELL_MQTT_BROKER"
+var TOPIC_ENV_VAR = "DOORBELL_MQTT_TOPIC"
 
 type player struct {
 	streamer beep.StreamSeekCloser
@@ -209,7 +202,10 @@ func slack_post(message string, endpoint string) {
 
 // subscribe to the appropriate mqtt topic
 func sub(client mqtt.Client) {
-	topic := "sensors/Doorbell"
+	topic := os.Getenv(TOPIC_ENV_VAR)
+	if topic == "" {
+		topic = "sensors/Doorbell" // fallback default
+	}
 	token := client.Subscribe(topic, 1, nil)
 	token.Wait()
 	log.Printf("Subscribed to topic :%s\n", topic)
