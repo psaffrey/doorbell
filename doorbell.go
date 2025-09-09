@@ -1,31 +1,40 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"bytes"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
+	"os"
+	"path/filepath"
+	"time"
+
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/flac"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
 	"github.com/faiface/beep/wav"
-	"log"
-	"os"
-	"path/filepath"
-	"time"
-	"net/http"
-	"bytes"
-	"io/ioutil"
-	_ "net/http/pprof"
 )
 
 var SINGLE_SOUND_ENV_VAR = "DOORBELL_SINGLE_SOUND"
 var DOUBLE_SOUND_ENV_VAR = "DOORBELL_DOUBLE_SOUND"
+var BROKER_ENV_VAR = "DOORBELL_MQTT_BROKER"
 
 type player struct {
 	streamer beep.StreamSeekCloser
-	buffer *beep.Buffer
+	buffer   *beep.Buffer
 	Path     string
 }
 
@@ -57,9 +66,9 @@ func (p *player) init() {
 	}
 	log.Printf("initialising stream for file %s\n", p.Path)
 	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second))
-    p.buffer = beep.NewBuffer(format)
-    p.buffer.Append(p.streamer)
-    p.streamer.Close()
+	p.buffer = beep.NewBuffer(format)
+	p.buffer.Append(p.streamer)
+	p.streamer.Close()
 }
 
 // play a sound
@@ -124,7 +133,7 @@ func receiver(button <-chan mqtt.Message, finished chan<- bool, slack_url string
 				} else if buttonmessage.Action == "double" {
 					playing = true
 					go dp.play(player_channel)
-					if slack_url != ""{
+					if slack_url != "" {
 						message := fmt.Sprintf("ding dong! (link quality %d; battery %v)", buttonmessage.Linkquality, buttonmessage.Battery)
 						go slack_post(message, slack_url)
 					}
@@ -154,8 +163,11 @@ var connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err
 
 // create the mqtt client we'll use to pick up messages
 func setup_client(listener mqtt.MessageHandler) mqtt.Client {
-	var broker = "192.168.0.100"
-	var port = 1883
+	broker := os.Getenv(BROKER_ENV_VAR)
+	if broker == "" {
+		broker = "192.168.0.100" // fallback default
+	}
+	port := 1883
 	hostname, err := os.Hostname()
 	if err != nil {
 		panic(err)
@@ -188,7 +200,7 @@ func slack_post(message string, endpoint string) {
 		log.Fatalf("An Error Occured %v", err)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalln(err)
 	}
