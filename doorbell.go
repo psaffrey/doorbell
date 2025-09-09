@@ -24,6 +24,7 @@ var DOUBLE_SOUND_ENV_VAR = "DOORBELL_DOUBLE_SOUND"
 
 type player struct {
 	streamer beep.StreamSeekCloser
+	buffer *beep.Buffer
 	Path     string
 }
 
@@ -54,13 +55,16 @@ func (p *player) init() {
 		log.Fatal(err)
 	}
 	log.Printf("initialising stream for file %s\n", p.Path)
-	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second))
+    p.buffer = beep.NewBuffer(format)
+    p.buffer.Append(p.streamer)
+    p.streamer.Close()
 }
 
 // play a sound
 func (p *player) play(done chan<- bool) {
-	p.streamer.Seek(0)
-	speaker.Play(beep.Seq(p.streamer, beep.Callback(func() {
+	sound := p.buffer.Streamer(0, p.buffer.Len())
+	speaker.Play(beep.Seq(sound, beep.Callback(func() {
 		done <- true
 	})))
 }
