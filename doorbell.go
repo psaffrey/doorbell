@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"bytes"
 	"io/ioutil"
+	_ "net/http/pprof"
 )
 
 var SINGLE_SOUND_ENV_VAR = "DOORBELL_SINGLE_SOUND"
@@ -71,7 +72,7 @@ func (p *player) play(done chan<- bool) {
 
 type ButtonMessage struct {
 	Action      string
-	Battery     uint16
+	Battery     float32
 	Lastseen    uint64
 	Linkquality uint16
 }
@@ -102,7 +103,7 @@ func receiver(button <-chan mqtt.Message, finished chan<- bool, slack_url string
 				var buttonmessage ButtonMessage
 				e := json.Unmarshal(msg.Payload(), &buttonmessage)
 				if e != nil {
-					log.Println("problem unpacking message!")
+					log.Println("problem unpacking message!", e)
 					continue
 				}
 				if buttonmessage.Action == "" {
@@ -117,14 +118,14 @@ func receiver(button <-chan mqtt.Message, finished chan<- bool, slack_url string
 					playing = true
 					go sp.play(player_channel)
 					if slack_url != "" {
-						message := fmt.Sprintf("ding dong! (link quality %d; battery %d)", buttonmessage.Linkquality, buttonmessage.Battery)
+						message := fmt.Sprintf("ding dong! (link quality %d; battery %v)", buttonmessage.Linkquality, buttonmessage.Battery)
 						go slack_post(message, slack_url)
 					}
 				} else if buttonmessage.Action == "double" {
 					playing = true
 					go dp.play(player_channel)
 					if slack_url != ""{
-						message := fmt.Sprintf("ding dong! (link quality %d; battery %d)", buttonmessage.Linkquality, buttonmessage.Battery)
+						message := fmt.Sprintf("ding dong! (link quality %d; battery %v)", buttonmessage.Linkquality, buttonmessage.Battery)
 						go slack_post(message, slack_url)
 					}
 				}
@@ -199,9 +200,6 @@ func sub(client mqtt.Client) {
 	topic := "sensors/Doorbell"
 	token := client.Subscribe(topic, 1, nil)
 	token.Wait()
-	topic = "sensors/Button"
-	token = client.Subscribe(topic, 1, nil)
-	token.Wait()
 	log.Printf("Subscribed to topic :%s\n", topic)
 }
 
@@ -224,6 +222,9 @@ func main() {
 	client := setup_client(listener)
 
 	go receiver(button, done, *slackPtr)
+	go func() {
+		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
+	}()
 
 	defer client.Disconnect(250)
 	select {}
