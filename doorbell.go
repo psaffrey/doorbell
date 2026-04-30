@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -28,13 +29,13 @@ var TOPIC_ENV_VAR = "DOORBELL_MQTT_TOPIC"
 type player struct {
 	streamer beep.StreamSeekCloser
 	buffer   *beep.Buffer
+	format   beep.Format
 	Path     string
 }
 
 // initialise a sound player
 func (p *player) init() {
 	var err error
-	var format beep.Format
 
 	f, err := os.Open(p.Path)
 	if err != nil {
@@ -44,11 +45,11 @@ func (p *player) init() {
 	extension := filepath.Ext(p.Path)
 
 	if extension == ".wav" {
-		p.streamer, format, err = wav.Decode(f)
+		p.streamer, p.format, err = wav.Decode(f)
 	} else if extension == ".flac" {
-		p.streamer, format, err = flac.Decode(f)
+		p.streamer, p.format, err = flac.Decode(f)
 	} else if extension == ".mp3" {
-		p.streamer, format, err = mp3.Decode(f)
+		p.streamer, p.format, err = mp3.Decode(f)
 	} else {
 		log.Printf("unrecognised file extension %s\n", extension)
 		os.Exit(1)
@@ -58,18 +59,44 @@ func (p *player) init() {
 		log.Fatal(err)
 	}
 	log.Printf("initialising stream for file %s\n", p.Path)
-	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second))
-	p.buffer = beep.NewBuffer(format)
+	speaker.Init(p.format.SampleRate, p.format.SampleRate.N(time.Second))
+	p.buffer = beep.NewBuffer(p.format)
 	p.buffer.Append(p.streamer)
 	p.streamer.Close()
 }
 
 // play a sound
 func (p *player) play(done chan<- bool) {
+	log.Printf("starting sound playback for %s\n", p.Path)
 	sound := p.buffer.Streamer(0, p.buffer.Len())
+	finished := make(chan struct{})
+	var once sync.Once
+	sendDone := func() {
+		once.Do(func() {
+			done <- true
+		})
+	}
+
 	speaker.Play(beep.Seq(sound, beep.Callback(func() {
-		done <- true
+		log.Printf("playback callback completed for %s\n", p.Path)
+		sendDone()
+		close(finished)
 	})))
+
+	go func() {
+		duration := time.Duration(p.buffer.Len()) * time.Second / time.Duration(p.format.SampleRate)
+		if duration <= 0 {
+			duration = 5 * time.Second
+		}
+		timeout := duration + 5*time.Second
+		select {
+		case <-finished:
+			return
+		case <-time.After(timeout):
+			log.Printf("playback timeout after %s for %s; resetting state\n", timeout, p.Path)
+			sendDone()
+		}
+	}()
 }
 
 type ButtonMessage struct {
@@ -113,11 +140,12 @@ func receiver(button <-chan mqtt.Message, finished chan<- bool, slack_url string
 					continue
 				}
 				if playing {
-					log.Println("Already playing")
+					log.Printf("already playing; ignoring new action %s\n", buttonmessage.Action)
 					continue
 				}
 				if buttonmessage.Action == "single" {
 					playing = true
+					log.Printf("triggering single sound for %s\n", sp.Path)
 					go sp.play(player_channel)
 					if slack_url != "" {
 						message := fmt.Sprintf("ding dong! (link quality %d; battery %v)", buttonmessage.Linkquality, buttonmessage.Battery)
@@ -125,6 +153,7 @@ func receiver(button <-chan mqtt.Message, finished chan<- bool, slack_url string
 					}
 				} else if buttonmessage.Action == "double" {
 					playing = true
+					log.Printf("triggering double sound for %s\n", dp.Path)
 					go dp.play(player_channel)
 					if slack_url != "" {
 						message := fmt.Sprintf("ding dong! (link quality %d; battery %v)", buttonmessage.Linkquality, buttonmessage.Battery)
@@ -165,6 +194,7 @@ func setup_client(listener mqtt.MessageHandler) mqtt.Client {
 	if err != nil {
 		panic(err)
 	}
+	log.Printf("using MQTT broker %s:%d\n", broker, port)
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", broker, port))
 	clientid := fmt.Sprintf("go_mqtt_client-%s", hostname)
@@ -206,9 +236,10 @@ func sub(client mqtt.Client) {
 	if topic == "" {
 		topic = "sensors/Doorbell" // fallback default
 	}
+	log.Printf("subscribing to MQTT topic %s\n", topic)
 	token := client.Subscribe(topic, 1, nil)
 	token.Wait()
-	log.Printf("Subscribed to topic :%s\n", topic)
+	log.Printf("Subscribed to topic: %s\n", topic)
 }
 
 func main() {
